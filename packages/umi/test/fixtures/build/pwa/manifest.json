@@ -5,7 +5,8 @@
     {
       "src": "./logo-192.png",
       "sizes": "192x192"
-    }, {
+    },
+    {
       "src": "./logo-128.png",
       "sizes": "128x128"
     }

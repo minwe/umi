@@ -5,13 +5,17 @@ import { dirname, join } from 'path';
 import execa from 'execa';
 import ora from 'ora';
 import { merge, isPlainObject } from 'lodash';
-import getNpmRegistry from 'getnpmregistry'
+import getNpmRegistry from 'getnpmregistry';
 import clipboardy from 'clipboardy';
 import { getParsedData, makeSureMaterialsTempPathExist } from './download';
 import writeNewRoute from '../../../utils/writeNewRoute';
-import { dependenciesConflictCheck, getNameFromPkg, getMockDependencies, getAllBlockDependencies } from './getBlockGenerator';
+import {
+  dependenciesConflictCheck,
+  getNameFromPkg,
+  getMockDependencies,
+  getAllBlockDependencies,
+} from './getBlockGenerator';
 import appendBlockToContainer from './appendBlockToContainer';
-
 
 export default api => {
   const { log, paths, debug, applyPlugins, config } = api;
@@ -23,7 +27,7 @@ export default api => {
     let retCtx;
     switch (args._[0]) {
       case 'add':
-      retCtx = await add(args);
+        retCtx = await add(args);
         break;
       case 'list':
         await list(args);
@@ -124,14 +128,10 @@ export default api => {
   async function gitClone(ctx, spinner) {
     spinner.start('Clone git repo');
     try {
-      await execa(
-        `git`,
-        [`clone`, ctx.repo, ctx.id, `--single-branch`, `-b`, ctx.branch],
-        {
-          cwd: ctx.blocksTempPath,
-          env: process.env,
-        },
-      );
+      await execa(`git`, [`clone`, ctx.repo, ctx.id, `--single-branch`, `-b`, ctx.branch], {
+        cwd: ctx.blocksTempPath,
+        env: process.env,
+      });
     } catch (e) {
       spinner.fail();
       throw new Error(e);
@@ -145,10 +145,7 @@ export default api => {
     // 1. parse url and args
     spinner.start('Parse url and args');
     const url = args._[1];
-    assert(
-      url,
-      `run ${chalk.cyan.underline('umi help block')} to checkout the usage`,
-    );
+    assert(url, `run ${chalk.cyan.underline('umi help block')} to checkout the usage`);
 
     const useYarn = existsSync(join(paths.cwd, 'yarn.lock'));
     const defaultNpmClient = blockConfig.npmClient || (useYarn ? 'yarn' : 'npm');
@@ -214,10 +211,7 @@ export default api => {
       const projectPkgPath = applyPlugins('_modifyBlockPackageJSONPath', {
         initialValue: join(paths.cwd, 'package.json'),
       });
-      assert(
-        existsSync(projectPkgPath),
-        `No package.json found in your project`,
-      );
+      assert(existsSync(projectPkgPath), `No package.json found in your project`);
       // eslint-disable-next-line
       const projectPkg = require(projectPkgPath);
 
@@ -229,32 +223,33 @@ export default api => {
       }
       const allBlockDependencies = getAllBlockDependencies(ctx.templateTmpDirPath, ctx.pkg);
       // get confilict dependencies and lack dependencies
-      const { conflicts, lacks, devConflicts, devLacks } = applyPlugins('_modifyBlockDependencies', {
-        initialValue: dependenciesConflictCheck(
-          allBlockDependencies,
-          projectPkg.dependencies,
-          devDependencies,
-          {
-            ...projectPkg.devDependencies,
-            ...projectPkg.dependencies,
-          },
-        ),
-      });
-      debug(`conflictDeps ${conflicts}, lackDeps ${lacks}`, `devConflictDeps ${devConflicts}, devLackDeps ${devLacks}`);
+      const { conflicts, lacks, devConflicts, devLacks } = applyPlugins(
+        '_modifyBlockDependencies',
+        {
+          initialValue: dependenciesConflictCheck(
+            allBlockDependencies,
+            projectPkg.dependencies,
+            devDependencies,
+            {
+              ...projectPkg.devDependencies,
+              ...projectPkg.dependencies,
+            },
+          ),
+        },
+      );
+      debug(
+        `conflictDeps ${conflicts}, lackDeps ${lacks}`,
+        `devConflictDeps ${devConflicts}, devLackDeps ${devLacks}`,
+      );
 
       // find confilict dependencies throw error
-      const allConflicts = [
-        ...conflicts,
-        ...devConflicts,
-      ];
+      const allConflicts = [...conflicts, ...devConflicts];
       if (allConflicts.length) {
         throw new Error(`
   find dependencies conflict between block and your project:
   ${allConflicts
     .map(info => {
-      return `* ${info[0]}: ${info[2]}(your project) not compatible with ${
-        info[1]
-      }(block)`;
+      return `* ${info[0]}: ${info[2]}(your project) not compatible with ${info[1]}(block)`;
     })
     .join('\n')}`);
       }
@@ -265,20 +260,14 @@ export default api => {
       } else {
         if (lacks.length) {
           const deps = lacks.map(dep => `${dep[0]}@${dep[1]}`);
-          spinner.start(
-            `Install additional dependencies ${deps.join(',')} with ${npmClient}`,
-          );
+          spinner.start(`Install additional dependencies ${deps.join(',')} with ${npmClient}`);
           try {
-            const registryUrl = await getNpmRegistry()
-            await execa(
-              npmClient,
-              npmClient.includes('yarn')
-                ? ['add', ...deps,`--registry=${registryUrl}`]
-                : ['install', ...deps, '--save',`--registry=${registryUrl}`],
-              {
-                cwd: dirname(projectPkgPath),
-              },
-            );
+            const registryUrl = await getNpmRegistry();
+            let npmArgs = npmClient.includes('yarn') ? ['add'] : ['install'];
+            npmArgs = [...npmArgs, ...deps, `--registry=${registryUrl}`];
+            await execa(npmClient, npmClient.includes('yarn') ? npmArgs : [...npmArgs, '--save'], {
+              cwd: dirname(projectPkgPath),
+            });
           } catch (e) {
             spinner.fail();
             throw new Error(e);
@@ -345,22 +334,24 @@ export default api => {
     if (ctx.pkg.blockConfig && ctx.pkg.blockConfig.dependencies) {
       const subBlocks = ctx.pkg.blockConfig.dependencies;
       try {
-        await Promise.all(subBlocks.map(block => {
-          const subBlockPath = join(ctx.templateTmpDirPath, block);
-          debug(`subBlockPath: ${subBlockPath}`);
-          return new BlockGenerator(args._.slice(2), {
-            sourcePath: subBlockPath,
-            path: isPageBlock ? generator.path : join(generator.path, generator.blockFolderName),
-            // eslint-disable-next-line
-            blockName: getNameFromPkg(require(join(subBlockPath, 'package.json'))),
-            isPageBlock: false,
-            dryRun,
-            env: {
-              cwd: api.cwd,
-            },
-            resolved: __dirname,
-          }).run();
-        }));
+        await Promise.all(
+          subBlocks.map(block => {
+            const subBlockPath = join(ctx.templateTmpDirPath, block);
+            debug(`subBlockPath: ${subBlockPath}`);
+            return new BlockGenerator(args._.slice(2), {
+              sourcePath: subBlockPath,
+              path: isPageBlock ? generator.path : join(generator.path, generator.blockFolderName),
+              // eslint-disable-next-line
+              blockName: getNameFromPkg(require(join(subBlockPath, 'package.json'))),
+              isPageBlock: false,
+              dryRun,
+              env: {
+                cwd: api.cwd,
+              },
+              resolved: __dirname,
+            }).run();
+          }),
+        );
       } catch (e) {
         spinner.fail();
         throw new Error(e);
@@ -370,9 +361,7 @@ export default api => {
 
     // 6. write routes
     if (generator.needCreateNewRoute && api.config.routes && !skipModifyRoutes) {
-      spinner.start(
-        `Write route ${generator.path} to ${api.service.userConfig.file}`,
-      );
+      spinner.start(`Write route ${generator.path} to ${api.service.userConfig.file}`);
       // 当前 _modifyBlockNewRouteConfig 只支持配置式路由
       // 未来可以做下自动写入注释配置，支持约定式路由
       const newRouteConfig = applyPlugins('_modifyBlockNewRouteConfig', {
@@ -384,11 +373,7 @@ export default api => {
       });
       try {
         if (!dryRun) {
-          writeNewRoute(
-            newRouteConfig,
-            api.service.userConfig.file,
-            paths.absSrcPath,
-          );
+          writeNewRoute(newRouteConfig, api.service.userConfig.file, paths.absSrcPath);
         }
       } catch (e) {
         spinner.fail();
@@ -416,8 +401,7 @@ export default api => {
     }
 
     // Final: show success message
-    const viewUrl = `http://localhost:${process.env.PORT
-      || '8000'}${generator.path.toLowerCase()}`;
+    const viewUrl = `http://localhost:${process.env.PORT || '8000'}${generator.path.toLowerCase()}`;
     try {
       clipboardy.writeSync(viewUrl);
       log.success(
@@ -426,9 +410,7 @@ export default api => {
         )} for view the block.`,
       );
     } catch (e) {
-      log.success(
-        `probable url ${chalk.cyan(viewUrl)} for view the block.`,
-      );
+      log.success(`probable url ${chalk.cyan(viewUrl)} for view the block.`);
       log.error('copy to clipboard failed');
     }
 
@@ -498,6 +480,6 @@ Examples:
           );
         },
       };
-    }
+    };
   });
 };
